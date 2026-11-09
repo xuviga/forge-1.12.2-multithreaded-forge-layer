@@ -47,6 +47,13 @@ public final class ThreadingMetrics
     private static final AtomicLong clientNanos = new AtomicLong();
     private static final AtomicLong clientMaxNanos = new AtomicLong();
 
+    private static volatile double lastMspt;
+    private static volatile double lastMaxMspt;
+    private static volatile double lastTps;
+    private static volatile double lastClientFrameMs;
+    private static volatile double lastClientMaxMs;
+    private static volatile double lastClientFps;
+
     private ThreadingMetrics()
     {
     }
@@ -58,11 +65,6 @@ public final class ThreadingMetrics
 
     public static void recordServerTick(long nanos)
     {
-        if (!ENABLED)
-        {
-            return;
-        }
-
         long ticks = windowTicks.incrementAndGet();
         long total = windowNanos.addAndGet(nanos);
         long previousMax = maxTickNanos.get();
@@ -82,6 +84,10 @@ public final class ThreadingMetrics
         double avgMs = (double)sum / (double)window / 1000000.0D;
         double maxMs = (double)max / 1000000.0D;
         double tps = Math.min(20.0D, 1000.0D / Math.max(0.001D, avgMs));
+        lastMspt = avgMs;
+        lastMaxMspt = maxMs;
+        lastTps = tps;
+        PerformanceGovernor.onMetricsWindow(avgMs, maxMs);
 
         long eNanos = entityNanos.getAndSet(0);
         long eTasks = entityTasks.getAndSet(0);
@@ -95,25 +101,23 @@ public final class ThreadingMetrics
         long pSubmitted = pathSubmitted.getAndSet(0);
         long pCompleted = pathCompleted.getAndSet(0);
 
-        LOGGER.info("[thread-metrics] ticks={} msptAvg={} msptMax={} tps={} entityMs/task={} entities/tick={} teMs/task={} tes/tick={} blockMs/task={} chunks/tick={} pathSubmitted={} pathCompleted={}",
-                Long.valueOf(window), String.format("%.3f", Double.valueOf(avgMs)), String.format("%.3f", Double.valueOf(maxMs)),
-                String.format("%.2f", Double.valueOf(tps)),
-                String.format("%.4f", Double.valueOf(eTasks == 0 ? 0.0D : (double)eNanos / (double)eTasks / 1000000.0D)),
-                String.format("%.1f", Double.valueOf((double)eCount / (double)Math.max(1L, window))),
-                String.format("%.4f", Double.valueOf(tTasks == 0 ? 0.0D : (double)tNanos / (double)tTasks / 1000000.0D)),
-                String.format("%.1f", Double.valueOf((double)tCount / (double)Math.max(1L, window))),
-                String.format("%.4f", Double.valueOf(bTasks == 0 ? 0.0D : (double)bNanos / (double)bTasks / 1000000.0D)),
-                String.format("%.1f", Double.valueOf((double)bChunks / (double)Math.max(1L, window))),
-                Long.valueOf(pSubmitted), Long.valueOf(pCompleted));
+        if (ENABLED)
+        {
+            LOGGER.info("[thread-metrics] ticks={} msptAvg={} msptMax={} tps={} entityMs/task={} entities/tick={} teMs/task={} tes/tick={} blockMs/task={} chunks/tick={} pathSubmitted={} pathCompleted={}",
+                    Long.valueOf(window), String.format("%.3f", Double.valueOf(avgMs)), String.format("%.3f", Double.valueOf(maxMs)),
+                    String.format("%.2f", Double.valueOf(tps)),
+                    String.format("%.4f", Double.valueOf(eTasks == 0 ? 0.0D : (double)eNanos / (double)eTasks / 1000000.0D)),
+                    String.format("%.1f", Double.valueOf((double)eCount / (double)Math.max(1L, window))),
+                    String.format("%.4f", Double.valueOf(tTasks == 0 ? 0.0D : (double)tNanos / (double)tTasks / 1000000.0D)),
+                    String.format("%.1f", Double.valueOf((double)tCount / (double)Math.max(1L, window))),
+                    String.format("%.4f", Double.valueOf(bTasks == 0 ? 0.0D : (double)bNanos / (double)bTasks / 1000000.0D)),
+                    String.format("%.1f", Double.valueOf((double)bChunks / (double)Math.max(1L, window))),
+                    Long.valueOf(pSubmitted), Long.valueOf(pCompleted));
+        }
     }
 
     public static void recordClientFrame(long nanos)
     {
-        if (!ENABLED)
-        {
-            return;
-        }
-
         long frames = clientFrames.incrementAndGet();
         long total = clientNanos.addAndGet(nanos);
         long previousMax = clientMaxNanos.get();
@@ -133,9 +137,45 @@ public final class ThreadingMetrics
         double avgMs = (double)sum / (double)window / 1000000.0D;
         double maxMs = (double)max / 1000000.0D;
         double fps = 1000.0D / Math.max(0.001D, avgMs);
-        LOGGER.info("[client-metrics] frames={} frameMsAvg={} frameMsMax={} fps={}",
-                Long.valueOf(window), String.format("%.3f", Double.valueOf(avgMs)),
-                String.format("%.3f", Double.valueOf(maxMs)), String.format("%.2f", Double.valueOf(fps)));
+        lastClientFrameMs = avgMs;
+        lastClientMaxMs = maxMs;
+        lastClientFps = fps;
+        if (ENABLED)
+        {
+            LOGGER.info("[client-metrics] frames={} frameMsAvg={} frameMsMax={} fps={}",
+                    Long.valueOf(window), String.format("%.3f", Double.valueOf(avgMs)),
+                    String.format("%.3f", Double.valueOf(maxMs)), String.format("%.2f", Double.valueOf(fps)));
+        }
+    }
+
+    public static double getLastMspt()
+    {
+        return lastMspt;
+    }
+
+    public static double getLastMaxMspt()
+    {
+        return lastMaxMspt;
+    }
+
+    public static double getLastTps()
+    {
+        return lastTps;
+    }
+
+    public static double getLastClientFrameMs()
+    {
+        return lastClientFrameMs;
+    }
+
+    public static double getLastClientMaxMs()
+    {
+        return lastClientMaxMs;
+    }
+
+    public static double getLastClientFps()
+    {
+        return lastClientFps;
     }
 
     public static void recordPathfindingSubmit()

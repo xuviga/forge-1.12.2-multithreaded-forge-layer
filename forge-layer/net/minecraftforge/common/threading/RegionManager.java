@@ -56,6 +56,16 @@ public final class RegionManager
     private static volatile boolean loggedTiles;
     private static volatile boolean loggedBlocks;
     private static volatile boolean loggedScheduled;
+    private static final long SLOW_ENTITY_NANOS = Long.getLong("forge.threading.slowEntityMs", 2L).longValue() * 1000000L;
+    private static final long SLOW_REGION_NANOS = Long.getLong("forge.threading.slowRegionMs", 50L).longValue() * 1000000L;
+    private static final boolean REGION_ERRORS_FATAL = Boolean.parseBoolean(System.getProperty("forge.threading.regionErrorsFatal", "false"));
+    private static final java.util.concurrent.atomic.AtomicLong REGION_ERRORS = new java.util.concurrent.atomic.AtomicLong();
+    private static final boolean ENTITY_LOD = Boolean.parseBoolean(System.getProperty("forge.threading.entityLod", "true"));
+    private static volatile int LOD_NEAR = Integer.getInteger("forge.threading.entityLodNear", 48).intValue();
+    private static volatile int LOD_MID = Integer.getInteger("forge.threading.entityLodMid", 96).intValue();
+    private static volatile int LOD_FAR = Integer.getInteger("forge.threading.entityLodFar", 160).intValue();
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong> SLOW_ENTITY_COUNTS =
+            new java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong>();
     /** Per-world entity -> region ownership maps, published before workers start and read by the audit. */
     private static final java.util.concurrent.ConcurrentHashMap<net.minecraft.world.World, java.util.Map<Entity, Region>> ENTITY_OWNERS =
             new java.util.concurrent.ConcurrentHashMap<net.minecraft.world.World, java.util.Map<Entity, Region>>();
@@ -93,6 +103,13 @@ public final class RegionManager
             Region region = Region.forChunk(regionId(entity.chunkCoordX, entity.chunkCoordZ, size),
                     dimension, entity.chunkCoordX, entity.chunkCoordZ, size);
             owners.put(entity, region);
+
+            if (shouldSkipForEntityLod(world, entity))
+            {
+                ThreadingTelemetry.increment("entity.lod.skipped");
+                continue;
+            }
+
             Bucket bucket = buckets.get(Integer.valueOf(region.getId()));
             if (bucket == null)
             {
@@ -142,12 +159,18 @@ public final class RegionManager
                             if (!entity.isDead)
                             {
                                 context.setRngKey(entityRngKey(entity));
+                                long entityStart = System.nanoTime();
                                 try
                                 {
                                     world.updateEntity(entity);
                                 }
                                 finally
                                 {
+                                    long entityElapsed = System.nanoTime() - entityStart;
+                                    if (entityElapsed > SLOW_ENTITY_NANOS)
+                                    {
+                                        logSlowEntity(entity, dimension, task.region.getId(), entityElapsed);
+                                    }
                                     context.clearRngKey();
                                 }
                             }
@@ -155,7 +178,14 @@ public final class RegionManager
                     }
                     finally
                     {
-                        ThreadingMetrics.recordRegionTask("entity", System.nanoTime() - taskStart, task.entities.size());
+                        long taskElapsed = System.nanoTime() - taskStart;
+                        if (taskElapsed > SLOW_REGION_NANOS)
+                        {
+                            LOGGER.warn("[slow-region] dim={} region={} entities={} took {} ms",
+                                    Integer.valueOf(dimension), Integer.valueOf(task.region.getId()),
+                                    Integer.valueOf(task.entities.size()), Double.valueOf(taskElapsed / 1.0E6D));
+                        }
+                        ThreadingMetrics.recordRegionTask("entity", taskElapsed, task.entities.size());
                         TickContext.clear();
                     }
                 }
@@ -164,6 +194,106 @@ public final class RegionManager
 
         await(futures, "region entity tick");
         cleanupDead(world);
+    }
+
+    /**
+     * Deterministic spatial AI-LOD. Entities within 48 blocks of a player tick every tick; the next rings tick every
+     * 2/4/8 ticks. Skipping is based on (entityId + worldTime) so it is replay-stable and does not depend on worker
+     * count. This cuts distant mob farm/item load without changing visible near-player behaviour.
+     */
+    private static boolean shouldSkipForEntityLod(net.minecraft.world.World world, Entity entity)
+    {
+        if (!ENTITY_LOD)
+        {
+            return false;
+        }
+
+        int interval = entityLodInterval(world, entity);
+        if (interval <= 1)
+        {
+            return false;
+        }
+
+        long tick = world.getTotalWorldTime() & 0x7fffffffL;
+        return Math.floorMod(entity.getEntityId() + (int)tick, interval) != 0;
+    }
+
+    public static int getLodNear()
+    {
+        return LOD_NEAR;
+    }
+
+    public static int getLodMid()
+    {
+        return LOD_MID;
+    }
+
+    public static int getLodFar()
+    {
+        return LOD_FAR;
+    }
+
+    public static void setLodRadii(int near, int mid, int far)
+    {
+        LOD_NEAR = Math.max(16, Math.min(64, near));
+        LOD_MID = Math.max(LOD_NEAR + 8, Math.min(128, mid));
+        LOD_FAR = Math.max(LOD_MID + 8, Math.min(256, far));
+    }
+
+    private static int entityLodInterval(net.minecraft.world.World world, Entity entity)
+    {
+        java.util.List<? extends Entity> players = world.playerEntities;
+        if (players.isEmpty())
+        {
+            return 1;
+        }
+
+        double nearest = Double.MAX_VALUE;
+        for (int index = 0; index < players.size(); index++)
+        {
+            Entity player = players.get(index);
+            double dx = entity.posX - player.posX;
+            double dz = entity.posZ - player.posZ;
+            double distanceSq = dx * dx + dz * dz;
+            if (distanceSq < nearest)
+            {
+                nearest = distanceSq;
+            }
+        }
+
+        if (nearest <= (double)LOD_NEAR * (double)LOD_NEAR)
+        {
+            return 1;
+        }
+        if (nearest <= (double)LOD_MID * (double)LOD_MID)
+        {
+            return 2;
+        }
+        if (nearest <= (double)LOD_FAR * (double)LOD_FAR)
+        {
+            return 4;
+        }
+        return 8;
+    }
+
+    private static void logSlowEntity(Entity entity, int dimension, int regionId, long elapsedNanos)
+    {
+        String key = entity.getClass().getName();
+        java.util.concurrent.atomic.AtomicLong counter = SLOW_ENTITY_COUNTS.get(key);
+        if (counter == null)
+        {
+            java.util.concurrent.atomic.AtomicLong created = new java.util.concurrent.atomic.AtomicLong();
+            java.util.concurrent.atomic.AtomicLong previous = SLOW_ENTITY_COUNTS.putIfAbsent(key, created);
+            counter = previous == null ? created : previous;
+        }
+
+        long hits = counter.incrementAndGet();
+        if (hits <= 5L || hits % 100L == 0L)
+        {
+            LOGGER.warn("[slow-entity] {} id={} dim={} region={} took {} ms (hit #{})",
+                    key, Integer.valueOf(entity.getEntityId()), Integer.valueOf(dimension), Integer.valueOf(regionId),
+                    Double.valueOf(elapsedNanos / 1.0E6D), Long.valueOf(hits));
+        }
     }
 
     /**
@@ -621,15 +751,50 @@ public final class RegionManager
      * always runs on the same thread, and an entity that crosses regions is naturally picked up by the new region's
      * worker on the next tick.
      */
-    private static Future<?> submit(Region region, Runnable task)
+    private static Future<?> submit(final Region region, final Runnable task)
     {
+        Runnable safeTask = new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                try
+                {
+                    task.run();
+                }
+                catch (Throwable throwable)
+                {
+                    if (REGION_ERRORS_FATAL)
+                    {
+                        if (throwable instanceof RuntimeException)
+                        {
+                            throw (RuntimeException)throwable;
+                        }
+                        if (throwable instanceof Error)
+                        {
+                            throw (Error)throwable;
+                        }
+                        throw new RuntimeException(throwable);
+                    }
+
+                    long count = REGION_ERRORS.incrementAndGet();
+                    if (count <= 5L || count % 100L == 0L)
+                    {
+                        ThreadingTelemetry.increment("region.errors");
+                        LOGGER.error("[region-error] {} region={} task failed; continuing (hit #{})",
+                                Thread.currentThread().getName(), Integer.valueOf(region.getId()), Long.valueOf(count), throwable);
+                    }
+                }
+            }
+        };
+
         if (Threading.isRegionAffinityEnabled())
         {
             ExecutorService[] current = getWorkers();
             int slot = Math.floorMod(region.getId(), current.length);
-            return current[slot].submit(task);
+            return current[slot].submit(safeTask);
         }
-        return getPool().submit(task);
+        return getPool().submit(safeTask);
     }
 
     private static ExecutorService getPool()

@@ -38,6 +38,9 @@ public class FMLDeobfTweaker implements ITweaker {
     @Override
     public void injectIntoClassLoader(LaunchClassLoader classLoader)
     {
+        // Pre-populate LaunchClassLoader.resourceCache from the persistent class-byte cache before any mod class loads.
+        net.minecraftforge.common.threading.ClassCache.install(classLoader);
+
         // Deobfuscation transformer, always last, and the access transformer tweaker as well
         classLoader.registerTransformer("net.minecraftforge.fml.common.asm.transformers.DeobfuscationTransformer");
         // Add all the access transformers now as well

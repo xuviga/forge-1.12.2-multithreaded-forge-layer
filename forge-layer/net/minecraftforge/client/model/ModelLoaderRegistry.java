@@ -285,6 +285,14 @@ public class ModelLoaderRegistry
         aliases.put(from, to);
     }
 
+    public static void clearCachedModels()
+    {
+        aliases.clear();
+        textures.clear();
+        cache.clear();
+        locks.clear();
+    }
+
     public static void clearModelCache(IResourceManager manager)
     {
         ModelLoaderRegistry.manager = manager;

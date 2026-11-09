@@ -257,12 +257,12 @@ public class EventBus implements IEventExceptionHandler
                 return;
             }
 
-            // Legacy adapter. MAIN handlers are forwarded to the world owner by default so mods keep the
-            // single-threaded contract. Set -Dforge.threading.forwardMainEvents=false to run them inline on the
-            // region worker (faster, but only safe for handlers that are explicitly thread-safe).
+            // Legacy adapter. MAIN handlers run inline on the region worker by default: forwarding every legacy
+            // handler to the owner thread serializes all region workers and destroys heavy-modpack throughput.
+            // Set -Dforge.threading.forwardMainEvents=true only for packs with handlers that are not thread-safe.
             if (threadType == ThreadType.MAIN && TickContext.isRegionThread() && MainThreadDispatcher.hasOwner())
             {
-                if (Boolean.parseBoolean(System.getProperty("forge.threading.forwardMainEvents", "true")))
+                if (Boolean.parseBoolean(System.getProperty("forge.threading.forwardMainEvents", "false")))
                 {
                     MainThreadDispatcher.dispatch(new Runnable()
                     {

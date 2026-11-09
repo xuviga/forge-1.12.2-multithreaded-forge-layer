@@ -27,17 +27,26 @@ $Patch = (Resolve-Path -LiteralPath $Patch).Path
 
 Push-Location $Target
 try {
+    $useIgnoreWhitespace = [bool]$IgnoreWhitespace
     $applyArgs = @("apply", "--check", "--whitespace=nowarn")
-    if ($IgnoreWhitespace) { $applyArgs += "--ignore-whitespace" }
+    if ($useIgnoreWhitespace) { $applyArgs += "--ignore-whitespace" }
     $applyArgs += $Patch
 
     & git @applyArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Patch does not apply cleanly. Use a Forge 14.23.5.2860 MCP stable_39 baseline."
+        if (-not $useIgnoreWhitespace) {
+            Write-Warning "Strict patch check failed; retrying with --ignore-whitespace (CRLF baseline)."
+            $useIgnoreWhitespace = $true
+            $applyArgs = @("apply", "--check", "--whitespace=nowarn", "--ignore-whitespace", $Patch)
+            & git @applyArgs
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "Patch does not apply cleanly. Use a Forge 14.23.5.2860 MCP stable_39 baseline."
+        }
     }
 
     $applyArgs = @("apply", "--whitespace=nowarn")
-    if ($IgnoreWhitespace) { $applyArgs += "--ignore-whitespace" }
+    if ($useIgnoreWhitespace) { $applyArgs += "--ignore-whitespace" }
     $applyArgs += $Patch
 
     & git @applyArgs

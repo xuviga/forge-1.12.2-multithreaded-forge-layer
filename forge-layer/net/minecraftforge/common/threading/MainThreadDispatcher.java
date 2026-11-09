@@ -88,6 +88,23 @@ public final class MainThreadDispatcher
         }
     }
 
+    /**
+     * Queues a task for the owner thread without waiting. Used for work that must not run on a region worker
+     * (for example entity tracker mutations) but must not stall the region barrier either.
+     */
+    public static void enqueue(Runnable runnable)
+    {
+        Thread thread = owner;
+        if (thread == null || Thread.currentThread() == thread)
+        {
+            runnable.run();
+            return;
+        }
+
+        QUEUE.add(new Task(runnable));
+        ThreadingTelemetry.increment("dispatch.tasks");
+    }
+
     public static int getQueueSize()
     {
         return QUEUE.size();

@@ -48,6 +48,7 @@ public final class Threading
     public static final String PROP_SINGLE_THREADED = "forge.threading.singleThreaded";
     public static final String PROP_PARALLEL_LOADING = "forge.threading.parallelLoading";
     private static final int MAX_PARALLEL_DIMENSIONS = 16;
+    private static volatile int dynamicSimulationDistance = -1;
     private static final int MAX_LOAD_THREADS = 16;
     /** Auto default: one worker per usable core, but never more than the normal vanilla dimension count. */
     private static final int DEFAULT_PARALLEL_DIMENSIONS = defaultParallelDimensions();
@@ -80,12 +81,34 @@ public final class Threading
         {
             return viewDistance;
         }
-        int value = Integer.getInteger("forge.threading.simulationDistance", 12).intValue();
+        if (isLowMemory())
+        {
+            return Math.min(viewDistance, 4);
+        }
+        int dynamic = dynamicSimulationDistance;
+        int value = dynamic > 0 ? dynamic : Integer.getInteger("forge.threading.simulationDistance", 12).intValue();
         if (value <= 0 || value >= viewDistance)
         {
             return viewDistance;
         }
         return value;
+    }
+
+    /** Current governor-controlled simulation distance (or the configured base value when the governor has no override). */
+    public static int getDynamicSimulationDistance()
+    {
+        int dynamic = dynamicSimulationDistance;
+        return dynamic > 0 ? dynamic : Integer.getInteger("forge.threading.simulationDistance", 12).intValue();
+    }
+
+    public static void setDynamicSimulationDistance(int value)
+    {
+        dynamicSimulationDistance = Math.max(4, Math.min(32, value));
+    }
+
+    public static void resetDynamicSimulationDistance()
+    {
+        dynamicSimulationDistance = -1;
     }
 
     /** Player entity tracker range in blocks. Lower values reduce N^2 fanout on crowded servers. */
@@ -157,20 +180,21 @@ public final class Threading
             setDefault("forge.threading.renderPipeline", "false");
             setDefault("forge.threading.parallelLoading", "false");
             setDefault("forge.threading.parallelModelLoading", "false");
+            setDefault("forge.threading.entityLod", "false");
         }
         else if ("balanced".equalsIgnoreCase(preset))
         {
-            setDefault("forge.threading.parallelDimensions", "2");
-            setDefault("forge.threading.regions", "2");
-            setDefault("forge.threading.regionSizeChunks", "16");
+            setDefault("forge.threading.parallelDimensions", "1");
+            // Leave regions on auto so autoRegionThreads() scales workers with the CPU instead of pinning 2.
+            setDefault("forge.threading.regionSizeChunks", "4");
             setDefault("forge.threading.regionBlockTicks", "false");
             setDefault("forge.threading.asyncPathfinding", "true");
         }
         else if ("aggressive".equalsIgnoreCase(preset))
         {
             setDefault("forge.threading.parallelDimensions", "2");
-            setDefault("forge.threading.regions", "2");
-            setDefault("forge.threading.regionSizeChunks", "8");
+            // Auto worker count: 8 on a 16-thread CPU. Smaller regions balance heavy entity clusters.
+            setDefault("forge.threading.regionSizeChunks", "4");
             setDefault("forge.threading.regionBlockTicks", "true");
             setDefault("forge.threading.asyncPathfinding", "true");
             setDefault("forge.threading.pathfindingThreads", "16");
@@ -179,8 +203,8 @@ public final class Threading
         {
             int cores = Runtime.getRuntime().availableProcessors();
             setDefault("forge.threading.parallelDimensions", Integer.toString(Math.max(2, Math.min(4, cores))));
-            setDefault("forge.threading.regions", Integer.toString(Math.max(2, Math.min(4, cores / 2))));
-            setDefault("forge.threading.regionSizeChunks", "8");
+            setDefault("forge.threading.regions", Integer.toString(Math.max(2, Math.min(8, cores / 2))));
+            setDefault("forge.threading.regionSizeChunks", "4");
             setDefault("forge.threading.regionBlockTicks", "true");
             setDefault("forge.threading.asyncPathfinding", "true");
             setDefault("forge.threading.pathfindingThreads", Integer.toString(Math.max(2, Math.min(16, cores / 2))));
@@ -241,9 +265,14 @@ public final class Threading
         return clamp(Integer.getInteger(PROP_PARALLEL_DIMENSIONS, DEFAULT_PARALLEL_DIMENSIONS).intValue());
     }
 
+    public static boolean isLowMemory()
+    {
+        return MemoryTrim.isLowMemory();
+    }
+
     public static boolean isParallelDimensionsEnabled()
     {
-        return getParallelDimensions() > 1;
+        return !isLowMemory() && getParallelDimensions() > 1;
     }
 
     /**
@@ -252,12 +281,12 @@ public final class Threading
      */
     public static boolean isParallelModelBakingEnabled()
     {
-        return !isSingleThreaded() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelModelBaking", "true"));
+        return !isSingleThreaded() && !isLowMemory() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelModelBaking", "true"));
     }
 
     public static int getModelBakingThreads()
     {
-        if (isSingleThreaded())
+        if (isSingleThreaded() || isLowMemory())
         {
             return 1;
         }
@@ -272,12 +301,12 @@ public final class Threading
      */
     public static boolean isParallelTextureDecodingEnabled()
     {
-        return !isSingleThreaded() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelTextureDecoding", "true"));
+        return !isSingleThreaded() && !isLowMemory() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelTextureDecoding", "true"));
     }
 
     public static int getTextureDecodingThreads()
     {
-        if (isSingleThreaded())
+        if (isSingleThreaded() || isLowMemory())
         {
             return 1;
         }
@@ -294,7 +323,7 @@ public final class Threading
      */
     public static boolean isParallelLoadingEnabled()
     {
-        return !isSingleThreaded() && Boolean.parseBoolean(System.getProperty(PROP_PARALLEL_LOADING, "true"));
+        return !isSingleThreaded() && !isLowMemory() && Boolean.parseBoolean(System.getProperty(PROP_PARALLEL_LOADING, "true"));
     }
 
     /**
@@ -337,12 +366,12 @@ public final class Threading
      */
     public static boolean isParallelModelLoadingEnabled()
     {
-        return !isSingleThreaded() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelModelLoading", "true"));
+        return !isSingleThreaded() && !isLowMemory() && Boolean.parseBoolean(System.getProperty("forge.threading.parallelModelLoading", "true"));
     }
 
     public static int getModelLoadingThreads()
     {
-        if (isSingleThreaded() || !isParallelModelLoadingEnabled())
+        if (isSingleThreaded() || isLowMemory() || !isParallelModelLoadingEnabled())
         {
             return 1;
         }
@@ -396,7 +425,7 @@ public final class Threading
         {
             return 0;
         }
-        return Math.min(4, Math.max(2, cores / 2));
+        return Math.min(16, Math.max(2, cores / 2));
     }
 
     public static boolean isRegionTickingEnabled()
@@ -415,7 +444,7 @@ public final class Threading
                 return clamp(automatic);
             }
         }
-        return clamp(Integer.getInteger("forge.threading.regionSizeChunks", 8).intValue());
+        return clamp(Integer.getInteger("forge.threading.regionSizeChunks", 4).intValue());
     }
 
     /**
@@ -473,3 +502,4 @@ public final class Threading
         return value > MAX_PARALLEL_DIMENSIONS ? MAX_PARALLEL_DIMENSIONS : value;
     }
 }
+

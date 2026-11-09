@@ -632,6 +632,12 @@ public class FMLModContainer implements ModContainer
         {
             return;
         }
+        if (net.minecraftforge.common.threading.MemoryTrim.isLowMemory())
+        {
+            // Drop bytecode of already-loaded mods before the next lifecycle callback. Classes stay loaded; only
+            // the retained raw bytes are released, which matters for large 1 GB packs.
+            net.minecraftforge.common.threading.MemoryTrim.trimLaunchClassLoaderCache();
+        }
         try
         {
             for (Method m : eventMethods.get(event.getClass()))

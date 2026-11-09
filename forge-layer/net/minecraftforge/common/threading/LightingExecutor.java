@@ -55,7 +55,7 @@ public final class LightingExecutor
 
     public static boolean isEnabled()
     {
-        return ENABLED;
+        return ENABLED && !Threading.isLowMemory();
     }
 
     /**

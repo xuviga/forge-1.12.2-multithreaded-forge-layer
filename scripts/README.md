@@ -43,4 +43,7 @@
 - `compile.ps1` needs `-ExtraClasspath` for IC2 because `IC2ExplosionSync`
   imports `ic2.api.event.ExplosionEvent`.
 - The patch files are line-ending sensitive. Keep `core.autocrlf=false`.
+  If the baseline was assembled on Windows with CRLF files, `apply-patches.ps1`
+  automatically retries with `--ignore-whitespace`; you can force the same with
+  `-IgnoreWhitespace`.
 - Do not commit the target `net/minecraft/**` tree, assets, or compiled jars.

@@ -205,6 +205,8 @@ public class GuiIngameForge extends GuiIngame
         GlStateManager.enableAlpha();
 
         post(ALL);
+
+        net.minecraftforge.common.threading.StatsOverlay.render(mc);
     }
 
     public ScaledResolution getResolution()

@@ -48,6 +48,7 @@ import net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformT
 import net.minecraft.client.renderer.block.model.ItemModelGenerator;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.block.model.ModelBakery;
+import net.minecraft.client.renderer.block.model.ModelCache;
 import net.minecraft.client.renderer.block.model.ModelBlock;
 import net.minecraft.client.renderer.block.model.ModelBlockDefinition;
 import net.minecraft.client.renderer.block.model.ModelBlockDefinition.MissingVariantException;
@@ -130,6 +131,23 @@ public final class ModelLoader extends ModelBakery
         return isLoading;
     }
 
+    /**
+     * Drops the unbaked model definitions and the static ModelLoaderRegistry cache after baking. Baked models in
+     * {@code bakedRegistry} are untouched. This frees the large ModelBlock/BlockPartFace/ImmutableMap graph that
+     * otherwise stays reachable through the static custom loaders for the whole session.
+     */
+    public void trimCaches()
+    {
+        trimBakeryCaches();
+        this.stateModels.clear();
+        this.multipartDefinitions.clear();
+        this.multipartModels.clear();
+        this.missingVariants.clear();
+        this.loadingExceptions.clear();
+        ModelLoaderRegistry.clearCachedModels();
+        net.minecraftforge.fml.common.FMLLog.log.info("[low-memory] trimmed unbaked model caches");
+    }
+
     private final boolean enableVerboseMissingInfo = FMLLaunchHandler.isDeobfuscatedEnvironment() || Boolean.parseBoolean(System.getProperty("forge.verboseMissingModelLogging", "false"));
     private final int verboseMissingInfoCount = Integer.parseInt(System.getProperty("forge.verboseMissingModelLoggingCount", "5"));
 
@@ -159,14 +177,26 @@ public final class ModelLoader extends ModelBakery
         textures.addAll(LOCATIONS_BUILTIN_TEXTURES);
 
         textureMap.loadSprites(resourceManager, map -> textures.forEach(map::registerSprite));
+        ModelCache.load(this);
 
         IBakedModel missingBaked = missingModel.bake(missingModel.getDefaultState(), DefaultVertexFormats.ITEM, DefaultTextureGetter.INSTANCE);
         Map<IModel, IBakedModel> bakedModels = Maps.newHashMap();
         HashMultimap<IModel, ModelResourceLocation> models = HashMultimap.create();
         Multimaps.invertFrom(Multimaps.forMap(stateModels), models);
 
-        ProgressBar bakeBar = ProgressManager.push("ModelLoader: baking", models.keySet().size());
         java.util.List<IModel> modelList = new java.util.ArrayList<IModel>(models.keySet());
+        modelList.removeIf(model ->
+        {
+            for (ModelResourceLocation location : models.get(model))
+            {
+                if (bakedRegistry.getObject(location) == null)
+                {
+                    return false;
+                }
+            }
+            return true;
+        });
+        ProgressBar bakeBar = ProgressManager.push("ModelLoader: baking", modelList.size());
 
         if (net.minecraftforge.common.threading.Threading.isParallelModelBakingEnabled() && modelList.size() > 1)
         {
@@ -216,7 +246,7 @@ public final class ModelLoader extends ModelBakery
         }
         else
         {
-            for(IModel model : models.keySet())
+            for(IModel model : modelList)
             {
                 String modelLocations = "[" + Joiner.on(", ").join(models.get(model)) + "]";
                 bakeBar.step(modelLocations);
@@ -243,8 +273,17 @@ public final class ModelLoader extends ModelBakery
 
         for (Entry<ModelResourceLocation, IModel> e : stateModels.entrySet())
         {
-            bakedRegistry.putObject(e.getKey(), bakedModels.get(e.getValue()));
+            if (bakedRegistry.getObject(e.getKey()) != null)
+            {
+                continue;
+            }
+            IBakedModel baked = bakedModels.get(e.getValue());
+            if (baked != null)
+            {
+                bakedRegistry.putObject(e.getKey(), baked);
+            }
         }
+        ModelCache.saveAsync(this);
         return bakedRegistry;
     }
 
