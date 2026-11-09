@@ -9,13 +9,13 @@ contain vanilla Minecraft source, assets, or binaries.
 
 ### `forge-layer/net/minecraftforge/**`
 
-- 733 files.
+- 732 files.
 - The complete `net/minecraftforge` package from the patched fork tree.
 - Includes:
   - Forge 14.23.5.2860 Forge/FML classes;
   - fork modifications (threading, memory, networking, rendering hooks, event
     bus hardening, loading, chunk I/O, etc.);
-  - new `net.minecraftforge.common.threading` package (34 classes);
+  - new `net.minecraftforge.common.threading` package (33 classes);
   - new `net.minecraftforge.common.memory` package (4 classes).
 
 ### `forge-layer/_forge_patches/**`
@@ -35,9 +35,9 @@ contain vanilla Minecraft source, assets, or binaries.
 ### `patches/forge-1.12.2-multithreaded.patch`
 
 - Full fork patch against a clean Forge 14.23.5.2860 MCP `stable_39` source tree.
-- 114 paths:
+- 113 paths:
   - 74 modified files;
-  - 40 new files.
+  - 39 new files.
 
 ### `patches/vanilla-only.patch`
 
@@ -84,4 +84,4 @@ A clean Forge baseline plus:
 3. `forge-layer/*` root artifacts
 4. `patches/vanilla-only.patch`
 
-reproduces the fork tree with **0/114 normalized file mismatches**.
+reproduces the fork tree with **0/113 normalized file mismatches**.

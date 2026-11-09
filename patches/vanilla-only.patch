@@ -1,5 +1,5 @@
 diff --git a/net/minecraft/block/BlockFalling.java b/net/minecraft/block/BlockFalling.java
-index fe6ff62..e1f2409 100644
+index fe6ff62..ec25c10 100644
 --- a/net/minecraft/block/BlockFalling.java
 +++ b/net/minecraft/block/BlockFalling.java
 @@ -14,7 +14,11 @@ import net.minecraftforge.fml.relauncher.SideOnly;
@@ -16,10 +16,10 @@ index fe6ff62..e1f2409 100644
      public BlockFalling()
      {
 diff --git a/net/minecraft/client/Minecraft.java b/net/minecraft/client/Minecraft.java
-index 8f1895e..f3451ac 100644
+index 8f1895e..09a0a2f 100644
 --- a/net/minecraft/client/Minecraft.java
 +++ b/net/minecraft/client/Minecraft.java
-@@ -1,3464 +1,3647 @@
+@@ -1,3464 +1,3685 @@
 -package net.minecraft.client;
 -
 -import com.google.common.collect.Lists;
@@ -3756,6 +3756,7 @@ index 8f1895e..f3451ac 100644
 +    private SearchTreeManager searchTreeManager = new SearchTreeManager();
 +    private final Session session;
 +    private boolean isGamePaused;
++
 +    /**
 +     * Time passed since the last update in ticks. Used instead of this.timer.renderPartialTicks when paused in
 +     * singleplayer.
@@ -3978,6 +3979,15 @@ index 8f1895e..f3451ac 100644
 +    private void init() throws LWJGLException, IOException
 +    {
 +        this.gameSettings = new GameSettings(this, this.gameDir);
++        if (net.minecraftforge.common.threading.MemoryTrim.isLowMemory())
++        {
++            this.gameSettings.mipmapLevels = 0;
++            this.gameSettings.renderDistanceChunks = 4;
++            this.gameSettings.fancyGraphics = false;
++            this.gameSettings.entityShadows = false;
++            this.gameSettings.ambientOcclusion = 0;
++            this.gameSettings.particleSetting = 2;
++        }
 +        this.creativeSettings = new CreativeSettings(this, this.gameDir);
 +        this.defaultResourcePacks.add(this.defaultResourcePack);
 +        this.startTimerHackThread();
@@ -4110,6 +4120,11 @@ index 8f1895e..f3451ac 100644
 +     */
 +    public void populateSearchTreeManager()
 +    {
++        if (net.minecraftforge.common.threading.MemoryTrim.isLowMemory())
++        {
++            LOGGER.info("[low-memory] skipped creative search tree indexing");
++            return;
++        }
 +        SearchTree<ItemStack> searchtree = new SearchTree<ItemStack>((p_193988_0_) ->
 +        {
 +            return (List)p_193988_0_.getTooltip((EntityPlayer)null, ITooltipFlag.TooltipFlags.NORMAL).stream().map(TextFormatting::getTextWithoutFormattingCodes).map(String::trim).filter((p_193984_0_) -> {
@@ -4663,6 +4678,7 @@ index 8f1895e..f3451ac 100644
 +            }
 +        }
 +
++        net.minecraftforge.common.threading.MemoryTrim.trimIfDue();
 +        long metricsFrameStart = System.nanoTime();
 +        long i = System.nanoTime();
 +        this.profiler.startSection("root");
@@ -5915,6 +5931,20 @@ index 8f1895e..f3451ac 100644
 +
 +    private void processKeyBinds()
 +    {
++        if (this.gameSettings.keyStatsOverlay.isKeyDown())
++        {
++            if (!net.minecraftforge.common.threading.StatsOverlay.isKeyHeld())
++            {
++                this.gameSettings.statsOverlay = !this.gameSettings.statsOverlay;
++                this.gameSettings.saveOptions();
++                net.minecraftforge.common.threading.StatsOverlay.setKeyHeld(true);
++            }
++        }
++        else
++        {
++            net.minecraftforge.common.threading.StatsOverlay.setKeyHeld(false);
++        }
++
 +        for (; this.gameSettings.keyBindTogglePerspective.isPressed(); this.renderGlobal.setDisplayListEntitiesDirty())
 +        {
 +            ++this.gameSettings.thirdPersonView;
@@ -6155,7 +6185,15 @@ index 8f1895e..f3451ac 100644
 +
 +        if (worldSettingsIn == null)
 +        {
-+            worldSettingsIn = new WorldSettings(worldinfo);
++            if (worldinfo == null)
++            {
++                // Dev/test harness: a new autoload folder has no level.dat yet.
++                worldSettingsIn = new WorldSettings(0L, net.minecraft.world.GameType.SURVIVAL, true, false, net.minecraft.world.WorldType.DEFAULT);
++            }
++            else
++            {
++                worldSettingsIn = new WorldSettings(worldinfo);
++            }
 +        }
 +
 +        try
@@ -7132,7 +7170,7 @@ index 8f1895e..f3451ac 100644
  }
 \ No newline at end of file
 diff --git a/net/minecraft/client/gui/GuiOverlayDebug.java b/net/minecraft/client/gui/GuiOverlayDebug.java
-index c64996f..f006816 100644
+index c64996f..b7b65b2 100644
 --- a/net/minecraft/client/gui/GuiOverlayDebug.java
 +++ b/net/minecraft/client/gui/GuiOverlayDebug.java
 @@ -59,6 +59,9 @@ public class GuiOverlayDebug extends Gui
@@ -7158,7 +7196,7 @@ index c64996f..f006816 100644
                              EntityPlayerMP entityplayermp = this.mc.getIntegratedServer().getPlayerList().getPlayerByUUID(this.mc.player.getUniqueID());
  
 diff --git a/net/minecraft/client/multiplayer/ChunkProviderClient.java b/net/minecraft/client/multiplayer/ChunkProviderClient.java
-index 50ff34a..06e45c2 100644
+index 50ff34a..4b2548b 100644
 --- a/net/minecraft/client/multiplayer/ChunkProviderClient.java
 +++ b/net/minecraft/client/multiplayer/ChunkProviderClient.java
 @@ -5,6 +5,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -7209,7 +7247,7 @@ index 50ff34a..06e45c2 100644
       * Unloads chunks that are marked to be unloaded. This is not guaranteed to unload every such chunk.
       */
 diff --git a/net/minecraft/client/multiplayer/WorldClient.java b/net/minecraft/client/multiplayer/WorldClient.java
-index 79b22cb..171bf5e 100644
+index 79b22cb..0cea416 100644
 --- a/net/minecraft/client/multiplayer/WorldClient.java
 +++ b/net/minecraft/client/multiplayer/WorldClient.java
 @@ -1,6 +1,8 @@
@@ -7305,7 +7343,7 @@ index 79b22cb..171bf5e 100644
  
          return entity;
 diff --git a/net/minecraft/client/network/NetHandlerPlayClient.java b/net/minecraft/client/network/NetHandlerPlayClient.java
-index 0f227d4..e1d4fc6 100644
+index 0f227d4..becde60 100644
 --- a/net/minecraft/client/network/NetHandlerPlayClient.java
 +++ b/net/minecraft/client/network/NetHandlerPlayClient.java
 @@ -14,10 +14,12 @@ import java.net.URLDecoder;
@@ -7485,7 +7523,7 @@ index 0f227d4..e1d4fc6 100644
  
      /**
 diff --git a/net/minecraft/client/renderer/EntityRenderer.java b/net/minecraft/client/renderer/EntityRenderer.java
-index 34da934..5abbf8c 100644
+index 34da934..a54f4a8 100644
 --- a/net/minecraft/client/renderer/EntityRenderer.java
 +++ b/net/minecraft/client/renderer/EntityRenderer.java
 @@ -1366,15 +1366,20 @@ public class EntityRenderer implements IResourceManagerReloadListener
@@ -7933,7 +7971,7 @@ index 0000000..f4d2e0e
 +    }
 +}
 diff --git a/net/minecraft/client/renderer/RegionRenderCacheBuilder.java b/net/minecraft/client/renderer/RegionRenderCacheBuilder.java
-index 2c076f8..55a5d92 100644
+index 2c076f8..cb5d26e 100644
 --- a/net/minecraft/client/renderer/RegionRenderCacheBuilder.java
 +++ b/net/minecraft/client/renderer/RegionRenderCacheBuilder.java
 @@ -7,23 +7,52 @@ import net.minecraftforge.fml.relauncher.SideOnly;
@@ -7997,7 +8035,7 @@ index 2c076f8..55a5d92 100644
  }
 \ No newline at end of file
 diff --git a/net/minecraft/client/renderer/RenderGlobal.java b/net/minecraft/client/renderer/RenderGlobal.java
-index 6a17a97..8b6f7ef 100644
+index 6a17a97..e9ce1c1 100644
 --- a/net/minecraft/client/renderer/RenderGlobal.java
 +++ b/net/minecraft/client/renderer/RenderGlobal.java
 @@ -6,6 +6,7 @@ import com.google.common.collect.Queues;
@@ -8399,13 +8437,41 @@ index 6a17a97..8b6f7ef 100644
          this.displayListEntitiesDirty |= this.renderDispatcher.runChunkUploads(finishTimeNano);
  
 -        if (!this.chunksToUpdate.isEmpty())
-+        if (this.chunksToUpdate.isEmpty())
-         {
+-        {
 -            Iterator<RenderChunk> iterator = this.chunksToUpdate.iterator();
+-
+-            while (iterator.hasNext())
+-            {
+-                RenderChunk renderchunk1 = iterator.next();
+-                boolean flag1;
+-
+-                if (renderchunk1.needsImmediateUpdate())
+-                {
+-                    flag1 = this.renderDispatcher.updateChunkNow(renderchunk1);
+-                }
+-                else
+-                {
+-                    flag1 = this.renderDispatcher.updateChunkLater(renderchunk1);
+-                }
+-
+-                if (!flag1)
+-                {
+-                    break;
+-                }
+-
+-                renderchunk1.clearNeedsUpdate();
+-                iterator.remove();
+-                long k1 = finishTimeNano - System.nanoTime();
+-
+-                if (k1 < 0L)
+-                {
+-                    break;
+-                }
++        if (this.chunksToUpdate.isEmpty())
++        {
 +            return;
 +        }
- 
--            while (iterator.hasNext())
++
 +        // After a world load, a render-distance change or a large chunk burst (multiplayer join, teleport), the
 +        // dirty set can contain hundreds of sections. Feeding all of them to the dispatcher in one frame stalls the
 +        // client thread inside makeCompileTaskChunk() and floods the workers, which then starve the server thread.
@@ -8431,37 +8497,20 @@ index 6a17a97..8b6f7ef 100644
 +            double maxAverageMs = Double.parseDouble(
 +                    System.getProperty("forge.threading.immediateChunkMaxAvgMs", "6.0"));
 +            if (this.renderDispatcher.getAverageTaskNanos() > (long)(maxAverageMs * 1000000.0D))
-             {
--                RenderChunk renderchunk1 = iterator.next();
--                boolean flag1;
++            {
 +                // Recent builds were already expensive. Never add an extra synchronous build on top of the frame.
 +                immediateBudget = 0;
 +            }
 +        }
- 
--                if (renderchunk1.needsImmediateUpdate())
--                {
--                    flag1 = this.renderDispatcher.updateChunkNow(renderchunk1);
--                }
--                else
--                {
--                    flag1 = this.renderDispatcher.updateChunkLater(renderchunk1);
--                }
++
 +        int processed = 0;
 +        Iterator<RenderChunk> iterator = this.chunksToUpdate.iterator();
- 
--                if (!flag1)
--                {
--                    break;
--                }
++
 +        while (iterator.hasNext() && processed < budget)
 +        {
 +            RenderChunk renderchunk1 = iterator.next();
 +            boolean flag1;
- 
--                renderchunk1.clearNeedsUpdate();
--                iterator.remove();
--                long k1 = finishTimeNano - System.nanoTime();
++
 +            if (renderchunk1.needsImmediateUpdate() && immediateBudget > 0)
 +            {
 +                flag1 = this.renderDispatcher.updateChunkNow(renderchunk1);
@@ -8472,11 +8521,7 @@ index 6a17a97..8b6f7ef 100644
 +                flag1 = this.renderDispatcher.updateChunkLater(renderchunk1);
 +                net.minecraftforge.common.threading.ThreadingTelemetry.increment("render.chunk.deferred");
 +            }
- 
--                if (k1 < 0L)
--                {
--                    break;
--                }
++
 +            if (!flag1)
 +            {
 +                break;
@@ -8547,8 +8592,9 @@ index 6a17a97..8b6f7ef 100644
       * On the client, re-renders all blocks in this range, inclusive. On the server, does nothing.
       */
 -    public void markBlockRangeForRenderUpdate(int x1, int y1, int z1, int x2, int y2, int z2)
+-    {
 +    public void markBlockRangeForRenderUpdate(final int x1, final int y1, final int z1, final int x2, final int y2, final int z2)
-     {
++    {
 +        if (net.minecraftforge.common.threading.ClientSimulationThread.isSimulationThread())
 +        {
 +            // Coalesce all simulation-thread render updates into one main-thread task. Creating one scheduled task
@@ -8874,7 +8920,7 @@ index 0000000..5b84514
 +    }
 +}
 diff --git a/net/minecraft/client/renderer/block/model/ModelBakery.java b/net/minecraft/client/renderer/block/model/ModelBakery.java
-index 6b66bb2..347dd45 100644
+index 6b66bb2..d76d6ab 100644
 --- a/net/minecraft/client/renderer/block/model/ModelBakery.java
 +++ b/net/minecraft/client/renderer/block/model/ModelBakery.java
 @@ -71,7 +71,8 @@ public class ModelBakery
@@ -8888,7 +8934,7 @@ index 6b66bb2..347dd45 100644
  
      public ModelBakery(IResourceManager resourceManagerIn, TextureMap textureMapIn, BlockModelShapes blockModelShapesIn)
 diff --git a/net/minecraft/client/renderer/chunk/ChunkRenderDispatcher.java b/net/minecraft/client/renderer/chunk/ChunkRenderDispatcher.java
-index 2c3d57f..dfaea7d 100644
+index 2c3d57f..77df2cf 100644
 --- a/net/minecraft/client/renderer/chunk/ChunkRenderDispatcher.java
 +++ b/net/minecraft/client/renderer/chunk/ChunkRenderDispatcher.java
 @@ -41,6 +41,10 @@ public class ChunkRenderDispatcher
@@ -9037,7 +9083,7 @@ index 2c3d57f..dfaea7d 100644
              flag = true;
          }
 diff --git a/net/minecraft/client/renderer/chunk/ChunkRenderWorker.java b/net/minecraft/client/renderer/chunk/ChunkRenderWorker.java
-index 7059e60..42ee910 100644
+index 7059e60..a566ed4 100644
 --- a/net/minecraft/client/renderer/chunk/ChunkRenderWorker.java
 +++ b/net/minecraft/client/renderer/chunk/ChunkRenderWorker.java
 @@ -45,6 +45,9 @@ public class ChunkRenderWorker implements Runnable
@@ -9062,7 +9108,7 @@ index 7059e60..42ee910 100644
      }
  
 diff --git a/net/minecraft/client/renderer/chunk/RenderChunk.java b/net/minecraft/client/renderer/chunk/RenderChunk.java
-index b8912be..abebbea 100644
+index b8912be..cb41dfa 100644
 --- a/net/minecraft/client/renderer/chunk/RenderChunk.java
 +++ b/net/minecraft/client/renderer/chunk/RenderChunk.java
 @@ -7,6 +7,8 @@ import java.util.Set;
@@ -9104,8 +9150,7 @@ index b8912be..abebbea 100644
          this.world = worldIn;
          this.renderGlobal = renderGlobalIn;
          this.index = indexIn;
-+    }
- 
+-
 -        if (OpenGlHelper.useVbo())
 -        {
 -            for (int j = 0; j < BlockRenderLayer.values().length; ++j)
@@ -9113,6 +9158,8 @@ index b8912be..abebbea 100644
 -                this.vertexBuffers[j] = new VertexBuffer(DefaultVertexFormats.BLOCK);
 -            }
 -        }
++    }
++
 +    private static FloatBuffer createModelviewMatrix()
 +    {
 +        FloatBuffer buffer = GLAllocation.createDirectFloatBuffer(16);
@@ -9354,7 +9401,7 @@ index b8912be..abebbea 100644
      {
          if (this.needsUpdate)
 diff --git a/net/minecraft/client/renderer/texture/TextureMap.java b/net/minecraft/client/renderer/texture/TextureMap.java
-index 14dec75..9232751 100644
+index 14dec75..f78f2e7 100644
 --- a/net/minecraft/client/renderer/texture/TextureMap.java
 +++ b/net/minecraft/client/renderer/texture/TextureMap.java
 @@ -102,6 +102,12 @@ public class TextureMap extends AbstractTexture implements ITickableTextureObjec
@@ -9495,7 +9542,7 @@ index 14dec75..9232751 100644
      /**
       * Grabs the registered entry for the specified name, returning null if there was not a entry.
 diff --git a/net/minecraft/client/renderer/texture/TextureUtil.java b/net/minecraft/client/renderer/texture/TextureUtil.java
-index bf0cbce..b9981fb 100644
+index bf0cbce..85275df 100644
 --- a/net/minecraft/client/renderer/texture/TextureUtil.java
 +++ b/net/minecraft/client/renderer/texture/TextureUtil.java
 @@ -167,6 +167,7 @@ public class TextureUtil
@@ -9507,7 +9554,7 @@ index bf0cbce..b9981fb 100644
          {
              int[] aint = p_147955_0_[i];
 diff --git a/net/minecraft/command/ServerCommandManager.java b/net/minecraft/command/ServerCommandManager.java
-index 8137987..b115a31 100644
+index 8137987..c1850a9 100644
 --- a/net/minecraft/command/ServerCommandManager.java
 +++ b/net/minecraft/command/ServerCommandManager.java
 @@ -48,6 +48,9 @@ public class ServerCommandManager extends CommandHandler implements ICommandList
@@ -9521,7 +9568,7 @@ index 8137987..b115a31 100644
          this.registerCommand(new CommandTeleport());
          this.registerCommand(new CommandGive());
 diff --git a/net/minecraft/entity/Entity.java b/net/minecraft/entity/Entity.java
-index c5f87a6..9287367 100644
+index c5f87a6..faff193 100644
 --- a/net/minecraft/entity/Entity.java
 +++ b/net/minecraft/entity/Entity.java
 @@ -144,7 +144,7 @@ public abstract class Entity implements ICommandSender, net.minecraftforge.commo
@@ -9578,7 +9625,7 @@ index c5f87a6..9287367 100644
          {
              return false;
 diff --git a/net/minecraft/entity/EntityLiving.java b/net/minecraft/entity/EntityLiving.java
-index 01736d0..a4e5fe3 100644
+index 01736d0..1c4c588 100644
 --- a/net/minecraft/entity/EntityLiving.java
 +++ b/net/minecraft/entity/EntityLiving.java
 @@ -192,6 +192,9 @@ public abstract class EntityLiving extends EntityLivingBase
@@ -9592,7 +9639,7 @@ index 01736d0..a4e5fe3 100644
          net.minecraftforge.common.ForgeHooks.onLivingSetAttackTarget(this, entitylivingbaseIn);
      }
 diff --git a/net/minecraft/entity/EntityLivingBase.java b/net/minecraft/entity/EntityLivingBase.java
-index dc294a1..536b06a 100644
+index dc294a1..a83111b 100644
 --- a/net/minecraft/entity/EntityLivingBase.java
 +++ b/net/minecraft/entity/EntityLivingBase.java
 @@ -967,6 +967,22 @@ public abstract class EntityLivingBase extends Entity
@@ -9644,7 +9691,7 @@ index dc294a1..536b06a 100644
          }
      }
 diff --git a/net/minecraft/entity/EntityTracker.java b/net/minecraft/entity/EntityTracker.java
-index e166acf..75e82c4 100644
+index e166acf..411b934 100644
 --- a/net/minecraft/entity/EntityTracker.java
 +++ b/net/minecraft/entity/EntityTracker.java
 @@ -58,6 +58,7 @@ public class EntityTracker
@@ -9683,7 +9730,7 @@ index e166acf..75e82c4 100644
  
              if (entitytrackerentry.playerEntitiesUpdated)
 diff --git a/net/minecraft/entity/item/EntityItem.java b/net/minecraft/entity/item/EntityItem.java
-index a5977f4..5c60bf0 100644
+index a5977f4..0f23766 100644
 --- a/net/minecraft/entity/item/EntityItem.java
 +++ b/net/minecraft/entity/item/EntityItem.java
 @@ -443,10 +443,20 @@ public class EntityItem extends Entity
@@ -9708,7 +9755,7 @@ index a5977f4..5c60bf0 100644
                  entityIn.addStat(StatList.getObjectsPickedUpStats(item), i);
              }
 diff --git a/net/minecraft/item/crafting/Ingredient.java b/net/minecraft/item/crafting/Ingredient.java
-index 7003e2a..c199774 100644
+index 7003e2a..4f61fee 100644
 --- a/net/minecraft/item/crafting/Ingredient.java
 +++ b/net/minecraft/item/crafting/Ingredient.java
 @@ -12,7 +12,10 @@ import net.minecraft.item.ItemStack;
@@ -9740,7 +9787,7 @@ index 7003e2a..c199774 100644
  
      protected void invalidate()
 diff --git a/net/minecraft/network/NetworkManager.java b/net/minecraft/network/NetworkManager.java
-index cf672e6..1cbe767 100644
+index cf672e6..6048c5d 100644
 --- a/net/minecraft/network/NetworkManager.java
 +++ b/net/minecraft/network/NetworkManager.java
 @@ -3,6 +3,7 @@ package net.minecraft.network;
@@ -9968,7 +10015,7 @@ index cf672e6..1cbe767 100644
      {
          final EnumConnectionState enumconnectionstate = EnumConnectionState.getFromPacket(inPacket);
 diff --git a/net/minecraft/network/PacketThreadUtil.java b/net/minecraft/network/PacketThreadUtil.java
-index bef85b4..de11bb2 100644
+index bef85b4..27b232a 100644
 --- a/net/minecraft/network/PacketThreadUtil.java
 +++ b/net/minecraft/network/PacketThreadUtil.java
 @@ -1,9 +1,14 @@
@@ -10029,7 +10076,7 @@ index bef85b4..de11bb2 100644
              });
              throw ThreadQuickExitException.INSTANCE;
 diff --git a/net/minecraft/network/play/server/SPacketChunkData.java b/net/minecraft/network/play/server/SPacketChunkData.java
-index 3fa97c5..d5f7101 100644
+index 3fa97c5..032133f 100644
 --- a/net/minecraft/network/play/server/SPacketChunkData.java
 +++ b/net/minecraft/network/play/server/SPacketChunkData.java
 @@ -25,6 +25,8 @@ public class SPacketChunkData implements Packet<INetHandlerPlayClient>
@@ -10070,7 +10117,7 @@ index 3fa97c5..d5f7101 100644
  
      /**
 diff --git a/net/minecraft/pathfinding/PathNavigate.java b/net/minecraft/pathfinding/PathNavigate.java
-index 8f48db3..32ac580 100644
+index 8f48db3..92257dc 100644
 --- a/net/minecraft/pathfinding/PathNavigate.java
 +++ b/net/minecraft/pathfinding/PathNavigate.java
 @@ -41,6 +41,10 @@ public abstract class PathNavigate
@@ -10265,7 +10312,7 @@ index 8f48db3..32ac580 100644
  
      protected abstract Vec3d getEntityPosition();
 diff --git a/net/minecraft/pathfinding/PathNavigateFlying.java b/net/minecraft/pathfinding/PathNavigateFlying.java
-index ba15e33..194ef3c 100644
+index ba15e33..3660221 100644
 --- a/net/minecraft/pathfinding/PathNavigateFlying.java
 +++ b/net/minecraft/pathfinding/PathNavigateFlying.java
 @@ -21,6 +21,15 @@ public class PathNavigateFlying extends PathNavigate
@@ -10285,7 +10332,7 @@ index ba15e33..194ef3c 100644
       * If on ground or swimming and can swim
       */
 diff --git a/net/minecraft/pathfinding/PathNavigateGround.java b/net/minecraft/pathfinding/PathNavigateGround.java
-index b0c08c0..068180c 100644
+index b0c08c0..40669c4 100644
 --- a/net/minecraft/pathfinding/PathNavigateGround.java
 +++ b/net/minecraft/pathfinding/PathNavigateGround.java
 @@ -26,6 +26,16 @@ public class PathNavigateGround extends PathNavigate
@@ -10306,7 +10353,7 @@ index b0c08c0..068180c 100644
       * If on ground or swimming and can swim
       */
 diff --git a/net/minecraft/pathfinding/PathNavigateSwimmer.java b/net/minecraft/pathfinding/PathNavigateSwimmer.java
-index 21e0f73..198ce5d 100644
+index 21e0f73..6704a78 100644
 --- a/net/minecraft/pathfinding/PathNavigateSwimmer.java
 +++ b/net/minecraft/pathfinding/PathNavigateSwimmer.java
 @@ -18,6 +18,12 @@ public class PathNavigateSwimmer extends PathNavigate
@@ -10323,7 +10370,7 @@ index 21e0f73..198ce5d 100644
       * If on ground or swimming and can swim
       */
 diff --git a/net/minecraft/profiler/Profiler.java b/net/minecraft/profiler/Profiler.java
-index 8613564..154cbee 100644
+index 8613564..fe5fee1 100644
 --- a/net/minecraft/profiler/Profiler.java
 +++ b/net/minecraft/profiler/Profiler.java
 @@ -28,7 +28,7 @@ public class Profiler
@@ -10404,7 +10451,7 @@ index 8613564..154cbee 100644
          if (this.profilingEnabled)
          {
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 2e3e4e4..d9a5c94 100644
+index 2e3e4e4..17316e7 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -114,9 +114,9 @@ public abstract class MinecraftServer implements ICommandSender, Runnable, IThre
@@ -10609,12 +10656,13 @@ index 2e3e4e4..d9a5c94 100644
  
                  this.profiler.startSection("tick");
 -                net.minecraftforge.fml.common.FMLCommonHandler.instance().onPreWorldTick(worldserver);
+-
+-                try
 +                this.tickWorld(worldserver);
 +                this.profiler.endSection();
 +                this.profiler.endSection();
 +            }
- 
--                try
++
 +            worldTickTimes.get(id)[this.tickCounter % 100] = System.nanoTime() - i;
 +        }
 +    }
@@ -10689,6 +10737,7 @@ index 2e3e4e4..d9a5c94 100644
 +                        net.minecraftforge.common.threading.TickContext.clear();
 +                    }
                  }
+-
 +            }));
 +        }
 +
@@ -10720,7 +10769,7 @@ index 2e3e4e4..d9a5c94 100644
 +        {
 +            net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.tick", System.nanoTime() - worldTickStart);
 +        }
- 
++
 +        try
 +        {
 +            if (net.minecraftforge.common.threading.RegionManager.isEnabled())
@@ -10742,15 +10791,16 @@ index 2e3e4e4..d9a5c94 100644
 +                    worldserver.setSuppressEntityTicking(false);
 +                    worldserver.setSuppressTileEntityTicking(false);
                  }
-+                net.minecraftforge.common.threading.RegionManager.tickEntities(worldserver);
-+                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.entities", System.nanoTime() - entitiesStart);
- 
+-
 -                net.minecraftforge.fml.common.FMLCommonHandler.instance().onPostWorldTick(worldserver);
 -                this.profiler.endSection();
 -                this.profiler.startSection("tracker");
 -                worldserver.getEntityTracker().tick();
 -                this.profiler.endSection();
 -                this.profiler.endSection();
++                net.minecraftforge.common.threading.RegionManager.tickEntities(worldserver);
++                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.entities", System.nanoTime() - entitiesStart);
++
 +                long deferredStart = System.nanoTime();
 +                worldserver.flushDeferred();
 +                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.deferred", System.nanoTime() - deferredStart);
@@ -10767,13 +10817,14 @@ index 2e3e4e4..d9a5c94 100644
 +                worldserver.flushDeferred();
 +                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.deferred", System.nanoTime() - deferredStart2);
              }
+-
+-            worldTickTimes.get(id)[this.tickCounter % 100] = System.nanoTime() - i;
 +            else
 +            {
 +                long entitiesStart = System.nanoTime();
 +                worldserver.updateEntities();
 +                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.entities", System.nanoTime() - entitiesStart);
- 
--            worldTickTimes.get(id)[this.tickCounter % 100] = System.nanoTime() - i;
++
 +                long pathStart = System.nanoTime();
 +                net.minecraftforge.common.threading.PathfindingExecutor.awaitAll();
 +                net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.pathfinding", System.nanoTime() - pathStart);
@@ -10799,11 +10850,12 @@ index 2e3e4e4..d9a5c94 100644
 -        this.profiler.endStartSection("commandFunctions");
 -        this.getFunctionManager().update();
 -        this.profiler.endStartSection("tickables");
+-
+-        for (int k = 0; k < this.tickables.size(); ++k)
 +        long postHookStart = System.nanoTime();
 +        net.minecraftforge.fml.common.FMLCommonHandler.instance().onPostWorldTick(worldserver);
 +        net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.hooks", System.nanoTime() - postHookStart);
- 
--        for (int k = 0; k < this.tickables.size(); ++k)
++
 +        long trackingStart = System.nanoTime();
 +        worldserver.getEntityTracker().tick();
 +        net.minecraftforge.common.threading.ThreadingTelemetry.addPhase("world.tracking", System.nanoTime() - trackingStart);
@@ -10863,7 +10915,7 @@ index 2e3e4e4..d9a5c94 100644
          else
          {
 diff --git a/net/minecraft/server/management/PlayerChunkMap.java b/net/minecraft/server/management/PlayerChunkMap.java
-index 14872cf..16b14a4 100644
+index 14872cf..9499eb2 100644
 --- a/net/minecraft/server/management/PlayerChunkMap.java
 +++ b/net/minecraft/server/management/PlayerChunkMap.java
 @@ -118,6 +118,7 @@ public class PlayerChunkMap
@@ -10899,7 +10951,7 @@ index 14872cf..16b14a4 100644
          int j = (int)player.posZ >> 4;
          double d0 = player.managedPosX - player.posX;
 diff --git a/net/minecraft/server/management/PlayerList.java b/net/minecraft/server/management/PlayerList.java
-index 3ae8e21..d02d26f 100644
+index 3ae8e21..e871b07 100644
 --- a/net/minecraft/server/management/PlayerList.java
 +++ b/net/minecraft/server/management/PlayerList.java
 @@ -788,6 +788,7 @@ public abstract class PlayerList
@@ -10922,7 +10974,7 @@ index 3ae8e21..d02d26f 100644
              }
          }
 diff --git a/net/minecraft/village/VillageCollection.java b/net/minecraft/village/VillageCollection.java
-index 721f213..5a1166b 100644
+index 721f213..910fe1c 100644
 --- a/net/minecraft/village/VillageCollection.java
 +++ b/net/minecraft/village/VillageCollection.java
 @@ -23,7 +23,7 @@ public class VillageCollection extends WorldSavedData
@@ -10935,7 +10987,7 @@ index 721f213..5a1166b 100644
      private final List<Village> villageList = Lists.<Village>newArrayList();
      private int tickCounter;
 diff --git a/net/minecraft/world/ChunkCache.java b/net/minecraft/world/ChunkCache.java
-index a9bb104..fa8193c 100644
+index a9bb104..54162cd 100644
 --- a/net/minecraft/world/ChunkCache.java
 +++ b/net/minecraft/world/ChunkCache.java
 @@ -92,6 +92,21 @@ public class ChunkCache implements IBlockAccess
@@ -10961,7 +11013,7 @@ index a9bb104..fa8193c 100644
      {
          if (pos.getY() >= 0 && pos.getY() < 256)
 diff --git a/net/minecraft/world/World.java b/net/minecraft/world/World.java
-index 51da852..73bf1ab 100644
+index 51da852..b009284 100644
 --- a/net/minecraft/world/World.java
 +++ b/net/minecraft/world/World.java
 @@ -117,8 +117,8 @@ public abstract class World implements IBlockAccess, net.minecraftforge.common.c
@@ -11499,7 +11551,7 @@ index 51da852..73bf1ab 100644
      }
  
 diff --git a/net/minecraft/world/WorldServer.java b/net/minecraft/world/WorldServer.java
-index fdc5a3e..5e35235 100644
+index fdc5a3e..e77343d 100644
 --- a/net/minecraft/world/WorldServer.java
 +++ b/net/minecraft/world/WorldServer.java
 @@ -206,13 +206,16 @@ public class WorldServer extends World implements IThreadListener
@@ -11757,7 +11809,7 @@ index fdc5a3e..5e35235 100644
          {
              explosion.clearAffectedBlockPositions();
 diff --git a/net/minecraft/world/biome/BiomeDecorator.java b/net/minecraft/world/biome/BiomeDecorator.java
-index ba97a18..3e80654 100644
+index ba97a18..aa8a512 100644
 --- a/net/minecraft/world/biome/BiomeDecorator.java
 +++ b/net/minecraft/world/biome/BiomeDecorator.java
 @@ -95,7 +95,11 @@ public class BiomeDecorator
@@ -11774,7 +11826,7 @@ index ba97a18..3e80654 100644
          if (this.decorating)
          {
 diff --git a/net/minecraft/world/chunk/Chunk.java b/net/minecraft/world/chunk/Chunk.java
-index 194e4f1..f0ce13c 100644
+index 194e4f1..580bce1 100644
 --- a/net/minecraft/world/chunk/Chunk.java
 +++ b/net/minecraft/world/chunk/Chunk.java
 @@ -763,7 +763,7 @@ public class Chunk implements net.minecraftforge.common.capabilities.ICapability
@@ -11836,7 +11888,7 @@ index 194e4f1..f0ce13c 100644
          int i = MathHelper.floor((aabb.minY - World.MAX_ENTITY_RADIUS) / 16.0D);
          int j = MathHelper.floor((aabb.maxY + World.MAX_ENTITY_RADIUS) / 16.0D);
 diff --git a/net/minecraft/world/chunk/storage/AnvilChunkLoader.java b/net/minecraft/world/chunk/storage/AnvilChunkLoader.java
-index 8ca7e5f..8570875 100644
+index 8ca7e5f..7871745 100644
 --- a/net/minecraft/world/chunk/storage/AnvilChunkLoader.java
 +++ b/net/minecraft/world/chunk/storage/AnvilChunkLoader.java
 @@ -82,6 +82,23 @@ public class AnvilChunkLoader implements IChunkLoader, IThreadedFileIO
@@ -11883,7 +11935,7 @@ index 8ca7e5f..8570875 100644
  
      public boolean isChunkGeneratedAt(int x, int z)
 diff --git a/net/minecraft/world/gen/ChunkProviderServer.java b/net/minecraft/world/gen/ChunkProviderServer.java
-index 5bbbc9b..5028a35 100644
+index 5bbbc9b..3042ebf 100644
 --- a/net/minecraft/world/gen/ChunkProviderServer.java
 +++ b/net/minecraft/world/gen/ChunkProviderServer.java
 @@ -35,6 +35,8 @@ public class ChunkProviderServer implements IChunkProvider
@@ -11940,12 +11992,12 @@ index 5bbbc9b..5028a35 100644
              long i = ChunkPos.asLong(x, z);
  
 -            try
--            {
++            if (chunk == null)
+             {
 -                chunk = this.chunkGenerator.generateChunk(x, z);
 -            }
 -            catch (Throwable throwable)
-+            if (chunk == null)
-             {
+-            {
 -                CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Exception generating new chunk");
 -                CrashReportCategory crashreportcategory = crashreport.makeCategory("Chunk to be generated");
 -                crashreportcategory.addCrashSection("Location", String.format("%d,%d", x, z));
@@ -11969,7 +12021,7 @@ index 5bbbc9b..5028a35 100644
  
              this.loadedChunks.put(i, chunk);
 diff --git a/net/minecraft/world/gen/layer/GenLayer.java b/net/minecraft/world/gen/layer/GenLayer.java
-index e4bd259..52d4a34 100644
+index e4bd259..bbb54ff 100644
 --- a/net/minecraft/world/gen/layer/GenLayer.java
 +++ b/net/minecraft/world/gen/layer/GenLayer.java
 @@ -7,15 +7,20 @@ import net.minecraft.world.gen.ChunkGeneratorSettings;
@@ -12298,7 +12350,7 @@ index 187b4ec..2bc52f9 100644
 +    }
 +}
 diff --git a/net/minecraft/world/storage/ThreadedFileIOBase.java b/net/minecraft/world/storage/ThreadedFileIOBase.java
-index 45a875b..2121913 100644
+index 45a875b..1a28744 100644
 --- a/net/minecraft/world/storage/ThreadedFileIOBase.java
 +++ b/net/minecraft/world/storage/ThreadedFileIOBase.java
 @@ -41,15 +41,41 @@ public class ThreadedFileIOBase implements Runnable

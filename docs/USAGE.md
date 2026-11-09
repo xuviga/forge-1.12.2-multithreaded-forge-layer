@@ -32,7 +32,7 @@ Or use the helper:
 .\scripts\apply-patches.ps1 -Target C:\path\to\forge-source
 ```
 
-This applies all 114 paths (74 modified + 40 new).
+This applies all 113 paths (74 modified + 39 new).
 
 ---
 
@@ -59,7 +59,7 @@ The script:
 4. Applies `patches/vanilla-only.patch` to `net/minecraft/**`.
 
 The resulting tree is identical to the full patch result. This was verified
-with 0/114 normalized file mismatches.
+with 0/113 normalized file mismatches.
 
 If you want to copy only the Forge layer without touching vanilla files:
 

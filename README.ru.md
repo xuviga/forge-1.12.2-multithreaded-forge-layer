@@ -25,11 +25,11 @@
 
 | Путь | Содержимое | Кол-во |
 |---|---|---:|
-| `forge-layer/net/minecraftforge/**` | Полный пропатченный Forge-слой (Forge + изменения форка + новые `threading`/`memory`) | 733 файла |
+| `forge-layer/net/minecraftforge/**` | Полный пропатченный Forge-слой (Forge + изменения форка + новые `threading`/`memory`) | 732 файла |
 | `forge-layer/_forge_patches/**` | Набор патчей Forge 14.23.5.2860 | 525 патчей |
 | `forge-layer/forge_at.cfg`, `forge.srg`, `forge.exc` | Forge AT/SRG/exceptions | 3 файла |
 | `forge-layer/log4j2*.xml`, `mcpmod.info` | Runtime-конфиг Forge | 3 файла |
-| `patches/forge-1.12.2-multithreaded.patch` | Полный патч форка | 114 путей |
+| `patches/forge-1.12.2-multithreaded.patch` | Полный патч форка | 113 путей |
 | `patches/vanilla-only.patch` | Только изменения `net/minecraft/**` + 2 новых renderer-класса | 46 путей |
 | `scripts/` | Скрипты слоя, сборки, запуска, проверки | — |
 | `docs/` | Инструкции | — |
@@ -37,9 +37,9 @@
 Полный патч:
 
 - 74 изменённых файла;
-- 40 новых файлов (threading, memory, `RenderPipeline`, `LodRenderer`, а также
-  новые классы v0.2 `ClassCache`, `WarmBoot`, `StatsOverlay`,
-  `PerformanceGovernor` и `MemoryTrim`).
+- 39 новых файлов (threading, memory, `RenderPipeline`, `LodRenderer`, а также
+  новые классы v0.2 `ClassCache`, `StatsOverlay`, `PerformanceGovernor`
+  и `MemoryTrim`).
 
 `vanilla-only.patch`:
 
@@ -89,7 +89,7 @@ git apply patches/forge-1.12.2-multithreaded.patch
 4. Применяет `patches/vanilla-only.patch` к `net/minecraft/**`.
 
 Результат совпадает с пропатченным деревом основного репозитория
-(проверено: 0/114 нормализованных расхождений).
+(проверено: 0/113 нормализованных расхождений).
 
 ### Сборка и запуск
 
@@ -118,7 +118,7 @@ official Forge source
   + forge-layer/net/minecraftforge/**
   + patches/vanilla-only.patch
   = current fork tree
-normalized mismatches: 0 / 114
+normalized mismatches: 0 / 113
 ```
 
 CI `layer-check` проверяет:
