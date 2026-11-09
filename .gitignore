@@ -1,0 +1,33 @@
+# Build outputs
+/build/
+/out/
+/compile_out/
+/mapped_stage/
+*.jar
+*.class
+*.log
+*.log.gz
+
+# Local run directories
+/logs/
+/run/
+/run-forge/
+/run-server/
+/eula.txt
+/options.txt
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local data
+*.zip
+*.lzma

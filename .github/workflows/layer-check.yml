@@ -1,0 +1,29 @@
+name: layer-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify layer contents
+        shell: pwsh
+        run: ./scripts/verify-layer.ps1
+
+      - name: Verify patch structure
+        run: |
+          set -e
+          test -s patches/forge-1.12.2-multithreaded.patch
+          test -s patches/vanilla-only.patch
+          grep -q '^diff --git a/net/minecraftforge/common/threading/RegionManager.java' patches/forge-1.12.2-multithreaded.patch
+          grep -q '^diff --git a/net/minecraft/client/Minecraft.java' patches/vanilla-only.patch
+          if grep -q '^diff --git a/net/minecraftforge/' patches/vanilla-only.patch; then
+            echo "vanilla-only.patch contains Forge diff paths"
+            exit 1
+          fi
+          echo "layer patch structure ok"
