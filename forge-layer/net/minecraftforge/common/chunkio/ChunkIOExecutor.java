@@ -37,11 +37,15 @@ import net.minecraftforge.fml.common.FMLLog;
 
 public class ChunkIOExecutor
 {
-    private static final int BASE_THREADS = 1;
-    private static final int PLAYERS_PER_THREAD = 50;
+    private static final int DEFAULT_THREADS = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+    private static final int BASE_THREADS = Math.max(1,
+            Integer.getInteger("forge.threading.chunkioThreads", DEFAULT_THREADS).intValue());
+    private static final int MAX_THREADS = Math.max(BASE_THREADS,
+            Integer.getInteger("forge.threading.chunkioMaxThreads", 8).intValue());
+    private static final int PLAYERS_PER_THREAD = 8;
 
     private static final Map<QueuedChunk, ChunkIOProvider> tasks = Maps.newConcurrentMap();
-    private static final ThreadPoolExecutor pool = new ChunkIOThreadPoolExecutor(BASE_THREADS, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
+    private static final ThreadPoolExecutor pool = new ChunkIOThreadPoolExecutor(BASE_THREADS, BASE_THREADS, 60L, TimeUnit.SECONDS,
         new LinkedBlockingQueue<Runnable>(),
         new ThreadFactory()
         {
@@ -59,6 +63,7 @@ public class ChunkIOExecutor
     static
     {
         net.minecraftforge.common.threading.ThreadingTelemetry.registerPool("chunkio", pool);
+        pool.allowCoreThreadTimeOut(true);
     }
 
     //Load the chunk completely in this thread. Dequeue as needed...
@@ -96,7 +101,7 @@ public class ChunkIOExecutor
             task = new ChunkIOProvider(key, loader, provider);
             task.run();
         }
-        task.syncCallback();
+        task.syncCallbackNow();
         return task.getChunk();
     }
 
@@ -189,7 +194,18 @@ public class ChunkIOExecutor
 
     public static void adjustPoolSize(int players)
     {
-        pool.setCorePoolSize(Math.max(BASE_THREADS, players / PLAYERS_PER_THREAD));
+        int target = Math.min(MAX_THREADS, BASE_THREADS + Math.max(0, players) / PLAYERS_PER_THREAD);
+        // ThreadPoolExecutor requires maximum >= core at every intermediate step.
+        if (target > pool.getMaximumPoolSize())
+        {
+            pool.setMaximumPoolSize(target);
+            pool.setCorePoolSize(target);
+        }
+        else
+        {
+            pool.setCorePoolSize(target);
+            pool.setMaximumPoolSize(target);
+        }
     }
 
     public static void tick()

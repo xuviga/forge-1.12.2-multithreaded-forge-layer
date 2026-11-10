@@ -119,12 +119,23 @@ public final class BackgroundPacer
      */
     public static void yieldIfNeeded()
     {
+        yieldIfNeeded(false);
+    }
+
+    /**
+     * @param ignoreServerHold when true, a server-thread overrun does not park this worker. Client chunk builders
+     *                         must keep building/uploading visible chunks even while the integrated server is
+     *                         briefly over budget: the server TPS is already 20 and the renderer is the actual
+     *                         bottleneck. The client hold is still honoured.
+     */
+    public static void yieldIfNeeded(boolean ignoreServerHold)
+    {
         if (!ENABLED)
         {
             return;
         }
         long now = System.nanoTime();
-        long until = Math.max(serverHoldUntil, clientHoldUntil);
+        long until = ignoreServerHold ? clientHoldUntil : Math.max(serverHoldUntil, clientHoldUntil);
         if (until <= now)
         {
             return;

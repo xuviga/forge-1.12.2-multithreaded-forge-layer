@@ -98,6 +98,7 @@ public final class MemoryLeakGuard
 
         removed += safeCount("region-owners", () -> RegionManager.clearEntityOwners(world));
         removed += safeCount("chunkio", () -> ChunkIOExecutor.purgeWorld(world));
+        removed += safeCount("chunkgen", () -> net.minecraftforge.common.threading.ChunkGenExecutor.purgeWorld(world));
         if (world.provider != null)
         {
             removed += safeCount("farmland", () -> FarmlandWaterManager.purgeDimension(dimension));

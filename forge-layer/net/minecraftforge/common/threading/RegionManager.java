@@ -64,6 +64,11 @@ public final class RegionManager
     private static volatile int LOD_NEAR = Integer.getInteger("forge.threading.entityLodNear", 48).intValue();
     private static volatile int LOD_MID = Integer.getInteger("forge.threading.entityLodMid", 96).intValue();
     private static volatile int LOD_FAR = Integer.getInteger("forge.threading.entityLodFar", 160).intValue();
+    /** Reduced entity rate during the first seconds after server start, while spawn chunks/entities are loading. */
+    private static final int STARTUP_GRACE_TICKS = Math.max(0,
+            Integer.getInteger("forge.threading.startupEntityGraceTicks", 200).intValue());
+    private static final int STARTUP_INTERVAL = Math.max(1,
+            Integer.getInteger("forge.threading.startupEntityInterval", 2).intValue());
     private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong> SLOW_ENTITY_COUNTS =
             new java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong>();
     /** Per-world entity -> region ownership maps, published before workers start and read by the audit. */
@@ -83,6 +88,13 @@ public final class RegionManager
     {
         if (!isEnabled())
         {
+            return;
+        }
+
+        if (world.playerEntities.isEmpty() && world.getPersistentChunks().isEmpty())
+        {
+            // Vanilla freezes entity updates on an empty server. Do not spend region workers on the spawn-area
+            // population while the server is booting or nobody is online.
             return;
         }
 
@@ -209,6 +221,13 @@ public final class RegionManager
         }
 
         int interval = entityLodInterval(world, entity);
+        net.minecraft.server.MinecraftServer server = world.getMinecraftServer();
+        if (STARTUP_GRACE_TICKS > 0 && server != null && server.getTickCounter() < STARTUP_GRACE_TICKS)
+        {
+            // Spawn chunks populate a few hundred animals at boot; ticking all of them at full rate is what created
+            // the 5-second TPS dip right after "Done". Halve the rate for the first 10 seconds.
+            interval = Math.max(interval, STARTUP_INTERVAL);
+        }
         if (interval <= 1)
         {
             return false;
@@ -552,6 +571,17 @@ public final class RegionManager
         for (int index = 0; index < snapshot.size(); index++)
         {
             net.minecraft.world.NextTickListEntry entry = snapshot.get(index);
+
+            // Modded updateTick implementations are not audited for region-worker execution. They may read
+            // neighbouring chunks (which region workers now see as empty placeholders) or wait on main-thread
+            // state; that is exactly how a "Timed out waiting for region scheduled block tick" happens. Let the
+            // vanilla sequential path run the whole batch on the server thread instead.
+            if (!entry.getBlock().getClass().getName().startsWith("net.minecraft."))
+            {
+                ThreadingTelemetry.increment("region.scheduled.moddedFallback");
+                return false;
+            }
+
             BlockPos pos = entry.position;
             if (!world.isAreaLoaded(pos, pos))
             {

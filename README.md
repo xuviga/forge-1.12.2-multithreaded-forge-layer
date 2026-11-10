@@ -32,25 +32,25 @@ layer as browsable source instead of only a diff.
 
 | Path | Contents | Count |
 |---|---|---:|
-| `forge-layer/net/minecraftforge/**` | Full patched Forge layer from the fork (Forge classes + fork modifications + new `threading`/`memory` packages) | 732 files |
+| `forge-layer/net/minecraftforge/**` | Full patched Forge layer from the fork (Forge classes + fork modifications + new `threading`/`memory` packages) | 734 files |
 | `forge-layer/_forge_patches/**` | Forge 14.23.5.2860 patch set | 525 patches |
 | `forge-layer/forge_at.cfg`, `forge.srg`, `forge.exc` | Forge access transformer / SRG / exceptions | 3 files |
 | `forge-layer/log4j2*.xml`, `mcpmod.info` | Forge runtime config | 3 files |
-| `patches/forge-1.12.2-multithreaded.patch` | Full fork patch against a clean Forge source | 113 paths |
-| `patches/vanilla-only.patch` | Only `net/minecraft/**` changes + the 2 new renderer classes | 46 paths |
+| `patches/forge-1.12.2-multithreaded.patch` | Full fork patch against a clean Forge source | 125 paths |
+| `patches/vanilla-only.patch` | Only `net/minecraft/**` changes + the 3 new renderer classes | 56 paths |
 | `scripts/` | Layer apply, compile, jar, run, verify scripts | — |
 | `docs/` | Usage notes | — |
 
 `patches/forge-1.12.2-multithreaded.patch` contains:
 
-- 74 modified files;
-- 39 new files (threading, memory, `RenderPipeline`, `LodRenderer`, plus the
+- 83 modified files;
+- 42 new files (threading, memory, `RenderPipeline`, `LodRenderer`, `ModelCache`, plus the
   v0.2 `ClassCache`, `StatsOverlay`, `PerformanceGovernor`, and `MemoryTrim`).
 
 `patches/vanilla-only.patch` contains:
 
 - modified vanilla files (`net/minecraft/**`);
-- the new `RenderPipeline.java` and `LodRenderer.java`;
+- the new `RenderPipeline.java`, `LodRenderer.java`, and `block/model/ModelCache.java`;
 - **no** `net/minecraftforge/**` paths.
 
 ---
@@ -99,7 +99,7 @@ This script:
 4. Applies `patches/vanilla-only.patch` to the `net/minecraft/**` files.
 
 The result is the same tree as the main repository's patched source
-(verified: 0/113 normalized file mismatches).
+(verified: 0/2922 normalized file mismatches).
 
 ### Build and run
 
@@ -130,7 +130,7 @@ official Forge source
   + forge-layer/net/minecraftforge/**
   + patches/vanilla-only.patch
   = current fork tree
-normalized mismatches: 0 / 113
+normalized mismatches: 0 / 2922
 ```
 
 CI (`layer-check`) verifies:

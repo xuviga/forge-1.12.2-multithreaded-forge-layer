@@ -319,6 +319,20 @@ public class DimensionManager
         return dimensions.keySet().toArray(new Integer[0]);
     }
 
+    /**
+     * Whether a dimension should be instantiated during server boot.
+     *
+     * <p>Forge used to create the nether and the end eagerly, then unload them again one tick later because they
+     * have no players and no spawn chunks. On a modded server that save/flush/leak-guard cycle costs the server
+     * thread several hundred milliseconds right after "Done". Vanilla dimensions are now created lazily by
+     * {@link net.minecraft.server.MinecraftServer#getWorld(int)} on the first teleport; mods can still force a
+     * startup load with {@link #keepDimensionLoaded(int, boolean)}.
+     */
+    public static boolean shouldLoadAtStartup(int dim)
+    {
+        return dim == 0 || (dim != -1 && dim != 1) || keepLoaded.contains(dim);
+    }
+
     public static WorldProvider createProviderFor(int dim)
     {
         try

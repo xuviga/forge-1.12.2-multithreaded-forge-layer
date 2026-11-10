@@ -88,6 +88,17 @@ class ChunkIOProvider implements Runnable
     // sync stuff
     public void syncCallback()
     {
+        this.syncCallback(true);
+    }
+
+    /** Synchronous loader path: populate inline so the caller never observes an unpopulated chunk. */
+    public void syncCallbackNow()
+    {
+        this.syncCallback(false);
+    }
+
+    private void syncCallback(boolean deferPost)
+    {
         if (this.nbt == null)
         {
             this.runCallbacks();
@@ -115,13 +126,30 @@ class ChunkIOProvider implements Runnable
         MinecraftForge.EVENT_BUS.post(new ChunkDataEvent.Load(this.chunk, this.nbt)); // Don't call ChunkDataEvent.Load async
 
         this.chunk.setLastSaveTime(provider.world.getTotalWorldTime());
-        this.provider.chunkGenerator.recreateStructures(this.chunk, this.chunkInfo.x, this.chunkInfo.z);
 
         provider.loadedChunks.put(ChunkPos.asLong(this.chunkInfo.x, this.chunkInfo.z), this.chunk);
         this.chunk.onLoad();
-        this.chunk.populate(provider, provider.chunkGenerator);
 
-        this.runCallbacks();
+        if (deferPost)
+        {
+            // recreateStructures/populate touch shared generator and structure state. Run them through the bounded
+            // pump so they can never race the background generator, and so the server thread never blocks on it.
+            this.provider.queueChunkPostProcess(this.chunk, true, this::runCallbacks);
+        }
+        else
+        {
+            // Synchronous callers need a fully populated chunk before this method returns.
+            net.minecraftforge.common.threading.ChunkGenExecutor.lockWorldGen();
+            try
+            {
+                this.provider.postProcessChunk(this.chunk, true);
+            }
+            finally
+            {
+                net.minecraftforge.common.threading.ChunkGenExecutor.unlockWorldGen();
+            }
+            this.runCallbacks();
+        }
     }
 
     public Chunk getChunk()
